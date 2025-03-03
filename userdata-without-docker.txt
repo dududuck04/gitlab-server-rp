@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# 필수 패키지 설치
+apt-get update
+apt-get install -y curl openssh-server ca-certificates tzdata perl
+
+# GitLab 패키지 저장소 추가 및 GitLab 설치
+curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | bash
+apt-get install -y gitlab-ce
+
+apt-get update
+
+# GitLab 서비스 시작
+gitlab-ctl reconfigure

@@ -1,0 +1,119 @@
+#!/bin/bash
+
+# 사용자 변수 설정
+USER_NAME=ubuntu
+
+mkdir -p /home/ubuntu/gitlab/gitlab_home
+mkdir -p /home/ubuntu/gitlab/data/init.groovy.d
+
+# 생성된 모든 디렉토리에 대한 권한 설정
+chown -R ${USER_NAME}:${USER_NAME} /home/ubuntu/gitlab
+
+# Docker 설치
+echo "1. [docker program installation] start"
+apt-get update -y
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+usermod -aG docker ${USER_NAME}
+newgrp docker
+
+# Docker 서비스 활성화 및 시작
+systemctl enable docker
+systemctl start docker
+
+apt list docker docker-compose
+apt install docker-compose -y
+
+cd ~/gitlab/data
+
+su - ${USER_NAME} -c "cat > ~/gitlab/data/plugins.txt <<EOF
+configuration-as-code:1775.v810dc950b_514
+role-strategy:713.vb_3837801b_8cc
+EOF"
+
+su - ${USER_NAME} -c "cat > ~/gitlab/data/gitlab.yaml <<EOF
+gitlab:
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: "admin"
+            permissions:
+              - "Overall/Administer"
+            entries:
+              - user: "user1"
+              - user: "admin"
+          - name: "readonly"
+            permissions:
+              - "Overall/Read"
+            entries:
+              - group: "authenticated"
+              - user: "anonymous"
+        items:
+          - name: "FolderA"
+            pattern: "A/.*"
+            permissions:
+              - "Job/Configure"
+              - "Job/Build"
+              - "Job/Delete"
+            entries:
+              - user: "user1"
+          - name: "FolderB"
+            pattern: "B.*"
+            permissions:
+              - "Job/Configure"
+              - "Job/Build"
+            entries:
+              - user: "admin"
+        agents:
+          - name: "Agent1"
+            pattern: "agent1"
+            permissions:
+              - "Agent/Build"
+            entries:
+              - user: "user1"
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "1234"
+        - id: "user1"
+          password: "1234"
+EOF"
+
+# Dockerfile 생성
+su - ${USER_NAME} -c "cat > ~/gitlab/data/Dockerfile <<EOF
+FROM gitlab/gitlab:jdk17
+USER root
+RUN apt-get update -y && apt-get upgrade -y
+USER gitlab
+COPY ./plugins.txt /usr/share/gitlab/plugins.txt
+RUN  gitlab-plugin-cli -f /usr/share/gitlab/plugins.txt
+COPY ./gitlab.yaml /usr/share/gitlab/gitlab.yaml
+EOF"
+
+
+# Docker-compose 파일 생성
+su - ${USER_NAME} -c "cat > ~/gitlab/data/docker-compose.yml <<EOF
+version: '3.9'
+services:
+  gitlab:
+    build: ~/gitlab/data
+    container_name: gitlab
+    user: gitlab
+    environment:
+      JAVA_OPTS:
+        -Dgitlab.install.runSetupWizard=false
+        -Dorg.apache.commons.jelly.tags.fmt.timeZone=Asia/Seoul
+      CASC_gitlab_CONFIG: /usr/share/gitlab/gitlab.yaml
+    restart: always
+    ports:
+      - \"80:8080\"
+      - \"50000:50000\"
+    volumes:
+      - /home/ubuntu/gitlab/gitlab_home:/var/gitlab_home
+EOF"
+
+su - ${USER_NAME} -c "cd ~/gitlab/data; docker-compose up -d"

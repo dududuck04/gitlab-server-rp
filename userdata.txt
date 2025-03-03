@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# 사용자 변수 설정
+USER_NAME=ubuntu
+
+mkdir -p /home/ubuntu/gitlab/gitlab_home/data
+mkdir -p /home/ubuntu/gitlab/gitlab_home/config
+mkdir -p /home/ubuntu/gitlab/gitlab_home/logs
+
+chown -R ${USER_NAME}:${USER_NAME} /home/ubuntu/gitlab
+
+# Docker 설치
+echo "1. [docker program installation] start"
+apt-get update -y
+apt-get upgrade -y
+
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+usermod -aG docker ${USER_NAME}
+
+# Docker 서비스 활성화 및 시작
+systemctl enable docker
+systemctl start docker
+
+# gitlab Docker 컨테이너 실행
+docker run -d -p 80:80 -p 443:443 \
+  --name gitlab \
+  --restart always \
+  -v /home/ubuntu/gitlab/gitlab_home/data:/var/opt/gitlab \
+  -v /home/ubuntu/gitlab/gitlab_home/config:/etc/gitlab \
+  -v /home/ubuntu/gitlab/gitlab_home/logs:/var/log/gitlab \
+  gitlab/gitlab-ce:latest
+
+ echo "Waiting for GitLab to initialize..."
+ sleep 30 # 충분한 시간을 기다림 (GitLab 초기화 시간은 설치 환경에 따라 다를 수 있음)
+
+# 초기 관리자 비밀번호 저장
+if [ -f "/home/ubuntu/gitlab/gitlab_home/config/initial_root_password" ]; then
+ cp /home/ubuntu/gitlab/gitlab_home/config/initial_root_password /home/ubuntu/gitlab/initialAdminPassword.txt
+ chown ubuntu:ubuntu /home/ubuntu/gitlab/initialAdminPassword.txt
+ echo "Initial admin password stored at /home/ubuntu/gitlab/initialAdminPassword.txt"
+else
+ echo "Initial admin password not found. Check if GitLab is initialized correctly."
+fi
